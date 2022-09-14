@@ -137,12 +137,12 @@ class PropParser:
 
     '''
 
-    def __init__(self, load_file, COMMENT='#'):
+    def __init__(self, load_file, COMMENT='#', trim_quotes=False):
         # allows for custom comment denotation
         self.COMMENT = COMMENT
         self.__properties__ = Properties()
         if load_file is not None:
-            self.load(load_file)
+            self.load(load_file, trim_quotes=trim_quotes)
 
     def __setitem__(self, key, value):
         self.__properties__[key] = value
@@ -153,7 +153,7 @@ class PropParser:
     def __contains__(self, key):
         return key in self.__properties__
 
-    def load(self, filename):
+    def load(self, filename, trim_quotes=False):
         self.__properties__ = Properties()
         
         if not os.path.isfile(filename):
@@ -171,17 +171,27 @@ class PropParser:
                 line = line.split('=', 1)
                 key = line[0].strip()
                 value = line[1].strip() if len(line) > 1 else ''
-                self.__parse_prop(self.__properties__, cached_comments, key.split('.'), value)
+                if trim_quotes:
+                    if value[0] == value[-1] and (value[0] in ('"', "'")):
+                        value = value[1:-1]
+
+                self.__parse_prop(self.__properties__, cached_comments, key.split('.'), value, None, '')
         
         return True
 
-    def __parse_prop(self, props, comments, keys, value):
+    def __parse_prop(self, props, comments, keys, value, parent, parent_key):
         if keys[0] in props:
-            self.__parse_prop(props[keys[0]], comments, keys[1:], value)
+            self.__parse_prop(props[keys[0]], comments, keys[1:], value, props, keys[0])
         elif len(keys) > 1:
             props[keys[0]] = Properties()
-            self.__parse_prop(props[keys[0]], comments, keys[1:], value)
+            self.__parse_prop(props[keys[0]], comments, keys[1:], value, props, keys[0])
         else:
+            # support both parent and child have value (e.g. checkpoint.vmState, checkpoint.vmState.readOnly)
+            if type(props) == str:
+                parent[parent_key] = Properties()
+                # move paernt => parent.__value__. (e.g. checkpoint.vmState => checkpoint.vmState.__value)
+                parent[parent_key]['__value__'] = props
+                props = parent[parent_key]
             # save the final value and reset the comments for the next property
             props[keys[0]] = Property(value, comments)
             del comments[:]
